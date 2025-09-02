@@ -1,5 +1,4 @@
 from pymongo import MongoClient
-from chromadb import HttpClient
 from qdrant_client import QdrantClient
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -14,11 +13,6 @@ class VectorDatabase:
         self.db_type = db_type
         if self.db_type == "mongodb":
             self.client = MongoClient(os.getenv("MONGODB_URI"))
-        elif self.db_type == "chromadb":
-            self.client = HttpClient(
-                host="localhost", 
-                port=8123
-            )
         elif self.db_type == "qdrant":
             self.client = QdrantClient(
                 url=os.getenv("QDRANT_URL"),
@@ -59,13 +53,6 @@ class VectorDatabase:
             db = self.client.get_database("vector_db")
             collection = db[collection_name]
             collection.insert_one(document)
-        elif self.db_type == "chromadb":
-            collection = self.client.get_or_create_collection(name=collection_name)
-            collection.add(
-                documents=[document["information"]],
-                embeddings=[document["embedding"]],
-                ids=[document["title"]]
-            )
         elif self.db_type == "qdrant":
             self._ensure_collection_exists(collection_name)
             
@@ -101,19 +88,6 @@ class VectorDatabase:
                 }
             ])
             return list(results)
-        elif self.db_type == "chromadb":
-            collection = self.client.get_or_create_collection(name=collection_name)
-            results = collection.query(
-                query_embeddings=[query_vector],
-                n_results=limit
-            )
-            docs = []
-            for i in range(len(results["ids"][0])):
-                docs.append({
-                    "title": results["ids"][0][i],
-                    "information": results["documents"][0][i]
-                })
-            return docs
         elif self.db_type == "qdrant":
             if not self.client.collection_exists(collection_name=collection_name):
                 print(f"[Warning] Collection '{collection_name}' doesn't exist for querying")
@@ -142,15 +116,6 @@ class VectorDatabase:
             db = self.client.get_database("vector_db")
             collection = db[collection_name]
             return collection.count_documents(filter_query) > 0
-        elif self.db_type == "chromadb":
-            try:
-                collection = self.client.get_or_create_collection(name=collection_name)
-                # Lấy toàn bộ ID hiện có trong collection
-                all_ids = collection.get()["ids"]
-                return filter_query["title"] in all_ids
-            except Exception as e:
-                print(f"Error checking existence in ChromaDB: {e}")
-                return False
         elif self.db_type == "qdrant":
             if not self.client.collection_exists(collection_name=collection_name):
                 print(f"[Info] Collection '{collection_name}' doesn't exist yet")
